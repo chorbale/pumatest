@@ -1,4 +1,4 @@
-+<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -665,6 +665,8 @@
     ];
   }
 
+  let entriesLoaded = false;
+
   async function loadEntries(){
     if(JSONBIN_READY){
       try{
@@ -673,6 +675,8 @@
         });
         const data = await res.json();
         entries = (data.record && Array.isArray(data.record.entries)) ? data.record.entries : [];
+        entriesLoaded = true;
+        setAddButtonReady();
         render();
         return;
       }catch(e){
@@ -686,6 +690,8 @@
       entries = seedData();
     }
     if(!entries.length) entries = seedData();
+    entriesLoaded = true;
+    setAddButtonReady();
     render();
   }
 
@@ -979,6 +985,20 @@
   function closeModal(){
     overlay.classList.remove("open");
     editingId = null;
+  }
+
+  const openModalBtn = document.getElementById("openModalBtn");
+  const openModalBtnDefaultText = openModalBtn.textContent;
+  openModalBtn.disabled = true;
+  openModalBtn.textContent = "Loading...";
+  openModalBtn.style.opacity = "0.6";
+  openModalBtn.style.cursor = "wait";
+
+  function setAddButtonReady(){
+    openModalBtn.disabled = false;
+    openModalBtn.textContent = openModalBtnDefaultText;
+    openModalBtn.style.opacity = "";
+    openModalBtn.style.cursor = "";
   }
 
   document.getElementById("openModalBtn").addEventListener("click", openAddModal);
