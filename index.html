@@ -670,9 +670,11 @@
   async function loadEntries(){
     if(JSONBIN_READY){
       try{
-        const res = await fetch(JSONBIN_URL + "/latest", {
-          headers: { "X-Master-Key": JSONBIN_API_KEY }
+        const res = await fetch(JSONBIN_URL + "/latest?t=" + Date.now(), {
+          headers: { "X-Master-Key": JSONBIN_API_KEY },
+          cache: "no-store"
         });
+        if(!res.ok) throw new Error("JSONBin responded with " + res.status);
         const data = await res.json();
         entries = (data.record && Array.isArray(data.record.entries)) ? data.record.entries : [];
         entriesLoaded = true;
@@ -698,17 +700,20 @@
   async function saveEntries(){
     if(JSONBIN_READY){
       try{
-        await fetch(JSONBIN_URL, {
+        const res = await fetch(JSONBIN_URL, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
             "X-Master-Key": JSONBIN_API_KEY
           },
+          cache: "no-store",
           body: JSON.stringify({ entries })
         });
+        if(!res.ok) throw new Error("JSONBin responded with " + res.status);
         return;
       }catch(e){
         console.error("Could not save to JSONBin", e);
+        alert("This change could not be saved to the shared board (connection issue). It will only be visible on this device until you retry.");
       }
     }
     try{
