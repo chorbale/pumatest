@@ -171,8 +171,14 @@
   }
   button.reset:hover{ color:var(--ink); }
 
+  .active-hash-list{
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:6px;
+  }
   .active-hash-chip{
-    display:none;
+    display:inline-flex;
     align-items:center;
     gap:6px;
     font-family:'IBM Plex Mono', monospace;
@@ -182,7 +188,6 @@
     background:var(--accent);
     color:#fff;
   }
-  .active-hash-chip.show{ display:inline-flex; }
   .active-hash-chip button{
     background:rgba(255,255,255,0.22);
     border:none;
@@ -508,8 +513,8 @@
     <select class="filter" data-filter="year"><option value="">Year - all</option></select>
     <select class="filter" data-filter="contentType"><option value="">Content type - all</option></select>
     <select class="filter" data-filter="region"><option value="">Region - all</option></select>
-    <input class="hashtag-search" id="searchInput" type="text" placeholder="Search hangtags...">
-    <span class="active-hash-chip" id="activeHashChip"><span id="activeHashText"></span><button id="clearHashBtn">&times;</button></span>
+    <input class="hashtag-search" id="searchInput" type="text" placeholder="Search, then press Enter to select...">
+    <div class="active-hash-list" id="activeHashList"></div>
     <button class="reset" id="resetBtn">Reset filters</button>
   </div>
 </div>
@@ -610,16 +615,23 @@
   };
 
   const STORAGE_KEY = "trendboard:entries";
+
+  // ---- JSONBin config ----
+  // Paste your own Bin ID and X-Master-Key below (from jsonbin.io).
+  // Everything else works once these two are filled in.
+  const JSONBIN_BIN_ID = "6a459d39f5f4af5e29509145";
+  const JSONBIN_API_KEY = "$2a$10$JwfQbwuA7s5wmjLbcuyQRuJ0z0Ex3xuK7plEBHQ7TgF3Q5.RAQEwe";
+  const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
+  const JSONBIN_READY = JSONBIN_BIN_ID !== "PASTE_YOUR_BIN_ID_HERE" && JSONBIN_API_KEY !== "PASTE_YOUR_X_MASTER_KEY_HERE";
   let entries = [];
   let activeFilters = { industry:"", market:"", generation:"", category:"", season:"", year:"", contentType:"", region:"" };
-  let activeHashtag = "";
+  let activeHashtags = [];
   let searchTerm = "";
 
   const feedEl = document.getElementById("feed");
   const emptyEl = document.getElementById("emptyState");
   const countPill = document.getElementById("countPill");
-  const activeHashChip = document.getElementById("activeHashChip");
-  const activeHashText = document.getElementById("activeHashText");
+  const activeHashList = document.getElementById("activeHashList");
 
   function seedData(){
     return [
@@ -657,6 +669,19 @@
   }
 
   async function loadEntries(){
+    if(JSONBIN_READY){
+      try{
+        const res = await fetch(JSONBIN_URL + "/latest", {
+          headers: { "X-Master-Key": JSONBIN_API_KEY }
+        });
+        const data = await res.json();
+        entries = (data.record && Array.isArray(data.record.entries)) ? data.record.entries : [];
+        render();
+        return;
+      }catch(e){
+        console.error("Could not load from JSONBin, falling back to local copy", e);
+      }
+    }
     try{
       const raw = localStorage.getItem(STORAGE_KEY);
       entries = raw ? JSON.parse(raw) : seedData();
@@ -668,6 +693,21 @@
   }
 
   async function saveEntries(){
+    if(JSONBIN_READY){
+      try{
+        await fetch(JSONBIN_URL, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Master-Key": JSONBIN_API_KEY
+          },
+          body: JSON.stringify({ entries })
+        });
+        return;
+      }catch(e){
+        console.error("Could not save to JSONBin", e);
+      }
+    }
     try{
       localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
     }catch(e){
@@ -719,7 +759,7 @@
     for(const key in activeFilters){
       if(activeFilters[key] && e[key] !== activeFilters[key]) return false;
     }
-    if(activeHashtag && !e.hashtags.includes(activeHashtag)) return false;
+    if(activeHashtags.length && !e.hashtags.some(h=>hashtagIsActive(h))) return false;
     if(searchTerm){
       const hay = (e.title+" "+e.source+" "+e.desc+" "+e.hashtags.join(" ")).toLowerCase();
       if(!hay.includes(searchTerm.toLowerCase())) return false;
@@ -748,7 +788,7 @@
           <div class="tag-category">${e.industry || "Fashion Design"}</div>
           <h3 class="tag-title">${escapeHtml(e.title)}</h3>
           <div class="tag-hashtags">
-            ${e.hashtags.map(h=>`<span data-hash="${h}" class="${activeHashtag===h?'is-active':''}">${h}</span>`).join("")}
+            ${e.hashtags.map(h=>`<span data-hash="${h}" class="${hashtagIsActive(h)?'is-active':''}">${h}</span>`).join("")}
           </div>
           <div class="tag-desc"><b>${escapeHtml(e.source)}</b> ${escapeHtml(e.desc)}</div>
           <div class="tag-meta">
@@ -776,13 +816,38 @@
     return (str||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
+  function normTag(s){
+    return (s||"").replace(/^#/,"").toLowerCase();
+  }
+  function hashtagIsActive(h){
+    return activeHashtags.some(t => normTag(h).includes(normTag(t)));
+  }
+
+  function addActiveHashtag(h){
+    if(!h) return;
+    if(!activeHashtags.includes(h)) activeHashtags.push(h);
+  }
+  function removeActiveHashtag(h){
+    activeHashtags = activeHashtags.filter(x=>x!==h);
+  }
+  function toggleActiveHashtag(h){
+    if(activeHashtags.includes(h)) removeActiveHashtag(h);
+    else addActiveHashtag(h);
+  }
+
   function renderActiveHashChip(){
-    if(activeHashtag){
-      activeHashChip.classList.add("show");
-      activeHashText.textContent = activeHashtag;
-    }else{
-      activeHashChip.classList.remove("show");
-    }
+    activeHashList.innerHTML = activeHashtags.map(h => `
+      <span class="active-hash-chip" data-chip="${h}">
+        <span>${h}</span>
+        <button data-remove-chip="${h}">&times;</button>
+      </span>
+    `).join("");
+    activeHashList.querySelectorAll("[data-remove-chip]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        removeActiveHashtag(btn.getAttribute("data-remove-chip"));
+        render();
+      });
+    });
   }
 
   function render(){
@@ -800,8 +865,7 @@
 
     feedEl.querySelectorAll("[data-hash]").forEach(el=>{
       el.addEventListener("click", ()=>{
-        const h = el.getAttribute("data-hash");
-        activeHashtag = (activeHashtag===h) ? "" : h;
+        toggleActiveHashtag(el.getAttribute("data-hash"));
         render();
       });
     });
@@ -822,20 +886,30 @@
     });
   }
 
-  document.getElementById("clearHashBtn").addEventListener("click", ()=>{
-    activeHashtag = "";
-    render();
-  });
+  const searchInputEl = document.getElementById("searchInput");
 
-  document.getElementById("searchInput").addEventListener("input", (e)=>{
+  searchInputEl.addEventListener("input", (e)=>{
     searchTerm = e.target.value;
     render();
   });
+
+  searchInputEl.addEventListener("keydown", (e)=>{
+    if(e.key !== "Enter") return;
+    e.preventDefault();
+    const raw = searchInputEl.value.trim();
+    if(!raw) return;
+    const h = raw.startsWith("#") ? raw : "#"+raw;
+    addActiveHashtag(h);
+    searchInputEl.value = "";
+    searchTerm = "";
+    render();
+  });
+
   document.getElementById("resetBtn").addEventListener("click", ()=>{
     Object.keys(activeFilters).forEach(k=>activeFilters[k]="");
-    activeHashtag = ""; searchTerm = "";
+    activeHashtags = []; searchTerm = "";
     document.querySelectorAll("select.filter").forEach(s=>s.value="");
-    document.getElementById("searchInput").value="";
+    searchInputEl.value="";
     render();
   });
 
