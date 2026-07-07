@@ -467,7 +467,11 @@
   }
   .file-preview{
     margin-top:10px;
-    max-height:130px;
+    max-height:220px;
+    width:auto;
+    max-width:100%;
+    object-fit:contain;
+    align-self:flex-start;
     border-radius:10px;
     display:none;
   }
@@ -697,8 +701,16 @@
     render();
   }
 
+  const JSONBIN_FREE_LIMIT = 100000; // JSONBin free tier caps a bin at 100KB
+
   async function saveEntries(){
     if(JSONBIN_READY){
+      const payload = JSON.stringify({ entries });
+      if(payload.length > JSONBIN_FREE_LIMIT){
+        alert("This board is now too large for JSONBin's free plan (100KB total). This last change was NOT saved to the shared board. Try removing an older tag's image, or use a smaller photo.");
+        try{ localStorage.setItem(STORAGE_KEY, payload); }catch(e){}
+        return;
+      }
       try{
         const res = await fetch(JSONBIN_URL, {
           method: "PUT",
@@ -707,7 +719,7 @@
             "X-Access-Key": JSONBIN_API_KEY
           },
           cache: "no-store",
-          body: JSON.stringify({ entries })
+          body: payload
         });
         if(!res.ok) throw new Error("JSONBin responded with " + res.status);
         return;
@@ -1019,13 +1031,13 @@
       const img = new Image();
       img.onload = function(){
         const canvas = document.createElement("canvas");
-        const maxW = 640;
+        const maxW = 280;
         const scale = Math.min(1, maxW / img.width);
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        pendingImage = canvas.toDataURL("image/jpeg", 0.72);
+        pendingImage = canvas.toDataURL("image/jpeg", 0.45);
         filePreview.src = pendingImage;
         filePreview.style.display = "block";
         fileDropLabel.textContent = file.name;
