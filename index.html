@@ -221,10 +221,11 @@
 
   .feed{
     display:grid;
-    grid-template-columns:repeat(3, 1fr);
+    grid-template-columns:repeat(4, 1fr);
     gap:24px;
     align-items:start;
   }
+  @media (max-width:1100px){ .feed{ grid-template-columns:repeat(3, 1fr); } }
   @media (max-width:900px){ .feed{ grid-template-columns:repeat(2, 1fr); } }
   @media (max-width:580px){ .feed{ grid-template-columns:1fr; } }
 
@@ -636,7 +637,6 @@
   // ---- Supabase config ----
   const SUPABASE_URL = "https://ezvpnmmljikclzixsmfb.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_4f6VqCeuDUoo6vDvTSYvrg_hzLAl9BB";
-  const SUPABASE_ROW_ID = "main";
   const supabaseClient = (typeof supabase !== "undefined")
     ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
@@ -688,20 +688,72 @@
 
   let entriesLoaded = false;
 
+  // Map between the app's entry shape and the trend_entries table columns.
+  function toRow(e){
+    return {
+      id: e.id,
+      title: e.title,
+      source: e.source,
+      description: e.desc,
+      hashtags: e.hashtags || [],
+      industry: e.industry,
+      market: e.market,
+      generation: e.generation,
+      category: e.category,
+      season: e.season,
+      year: e.year,
+      content_type: e.contentType,
+      region: e.region,
+      image: e.image,
+      ts: e.ts
+    };
+  }
+
+  function fromRow(r){
+    return {
+      id: r.id,
+      title: r.title,
+      source: r.source,
+      desc: r.description,
+      hashtags: r.hashtags || [],
+      industry: r.industry,
+      market: r.market,
+      generation: r.generation,
+      category: r.category,
+      season: r.season,
+      year: r.year,
+      contentType: r.content_type,
+      region: r.region,
+      image: r.image,
+      ts: r.ts
+    };
+  }
+
+  function saveLocalSnapshot(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    }catch(e){
+      console.error("Could not save to local storage", e);
+    }
+  }
+
   async function loadEntries(){
     if(SUPABASE_READY){
       try{
         const { data, error } = await supabaseClient
-          .from("trend_board")
-          .select("data")
-          .eq("id", SUPABASE_ROW_ID)
-          .maybeSingle();
+          .from("trend_entries")
+          .select("*")
+          .order("ts", { ascending: false });
         if(error) throw error;
-        entries = (data && data.data && Array.isArray(data.data.entries)) ? data.data.entries : [];
-        if(!data){
-          // Row doesn't exist yet - seed it.
+        if(data && data.length){
+          entries = data.map(fromRow);
+        }else{
+          // Table is empty - seed it once with the starter entries.
           entries = seedData();
-          await saveEntries();
+          for(const e of entries){
+            const { error: seedError } = await supabaseClient.from("trend_entries").insert(toRow(e));
+            if(seedError) console.error("Could not seed Supabase row", seedError);
+          }
         }
         entriesLoaded = true;
         setAddButtonReady();
@@ -723,12 +775,10 @@
     render();
   }
 
-  async function saveEntries(){
+  async function upsertEntry(entry){
     if(SUPABASE_READY){
       try{
-        const { error } = await supabaseClient
-          .from("trend_board")
-          .upsert({ id: SUPABASE_ROW_ID, data: { entries }, updated_at: new Date().toISOString() });
+        const { error } = await supabaseClient.from("trend_entries").upsert(toRow(entry));
         if(error) throw error;
         return;
       }catch(e){
@@ -736,11 +786,21 @@
         alert("This change could not be saved to the shared board (connection issue). It will only be visible on this device until you retry.");
       }
     }
-    try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-    }catch(e){
-      console.error("Could not save to local storage", e);
+    saveLocalSnapshot();
+  }
+
+  async function deleteEntryRemote(id){
+    if(SUPABASE_READY){
+      try{
+        const { error } = await supabaseClient.from("trend_entries").delete().eq("id", id);
+        if(error) throw error;
+        return;
+      }catch(e){
+        console.error("Could not delete from Supabase", e);
+        alert("This deletion could not be saved to the shared board (connection issue). It will only be reflected on this device until you retry.");
+      }
     }
+    saveLocalSnapshot();
   }
 
   function timeAgo(ts){
@@ -907,7 +967,7 @@
         ev.stopPropagation();
         const id = el.getAttribute("data-del");
         entries = entries.filter(e=>e.id!==id);
-        await saveEntries();
+        await deleteEntryRemote(id);
         render();
       });
     });
@@ -1086,14 +1146,17 @@
       image: pendingImage
     };
 
+    let savedEntry;
     if(editingId){
       const idx = entries.findIndex(e=>e.id===editingId);
       if(idx !== -1) entries[idx] = { ...entries[idx], ...fields };
+      savedEntry = entries[idx];
     }else{
-      entries.unshift({ id: "e-" + Date.now(), ...fields, ts: Date.now() });
+      savedEntry = { id: "e-" + Date.now(), ...fields, ts: Date.now() };
+      entries.unshift(savedEntry);
     }
 
-    await saveEntries();
+    await upsertEntry(savedEntry);
     render();
     closeModal();
     resetForm();
