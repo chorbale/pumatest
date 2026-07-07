@@ -122,9 +122,23 @@
     max-width:1280px;
     margin:0 auto;
     display:flex;
-    align-items:center;
+    align-items:flex-end;
     gap:9px;
     flex-wrap:wrap;
+  }
+
+  .filter-group{
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+  }
+  .filter-group label{
+    font-size:9.5px;
+    font-weight:600;
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+    color:var(--muted);
+    padding-left:13px;
   }
 
   select.filter, input.hashtag-search{
@@ -506,15 +520,15 @@
 
 <div class="rack-wrap">
   <div class="rack-inner" id="rack">
-    <select class="filter" data-filter="industry"><option value="">Industry - all</option></select>
-    <select class="filter" data-filter="market"><option value="">Market - all</option></select>
-    <select class="filter" data-filter="generation"><option value="">Generation - all</option></select>
-    <select class="filter" data-filter="category"><option value="">Category - all</option></select>
-    <select class="filter" data-filter="season"><option value="">Season - all</option></select>
-    <select class="filter" data-filter="year"><option value="">Year - all</option></select>
-    <select class="filter" data-filter="contentType"><option value="">Content type - all</option></select>
-    <select class="filter" data-filter="region"><option value="">Region - all</option></select>
-    <input class="hashtag-search" id="searchInput" type="text" placeholder="#Hashtag search">
+    <div class="filter-group"><label>Industry</label><select class="filter" data-filter="industry"><option value="">All</option></select></div>
+    <div class="filter-group"><label>Market</label><select class="filter" data-filter="market"><option value="">All</option></select></div>
+    <div class="filter-group"><label>Generation</label><select class="filter" data-filter="generation"><option value="">All</option></select></div>
+    <div class="filter-group"><label>Category</label><select class="filter" data-filter="category"><option value="">All</option></select></div>
+    <div class="filter-group"><label>Season</label><select class="filter" data-filter="season"><option value="">All</option></select></div>
+    <div class="filter-group"><label>Year</label><select class="filter" data-filter="year"><option value="">All</option></select></div>
+    <div class="filter-group"><label>Content type</label><select class="filter" data-filter="contentType"><option value="">All</option></select></div>
+    <div class="filter-group"><label>Region</label><select class="filter" data-filter="region"><option value="">All</option></select></div>
+    <input class="hashtag-search" id="searchInput" type="text" placeholder="Search anything, press Enter to pin...">
     <div class="active-hash-list" id="activeHashList"></div>
     <button class="reset" id="resetBtn">Reset filters</button>
   </div>
@@ -779,10 +793,9 @@
     for(const key in activeFilters){
       if(activeFilters[key] && e[key] !== activeFilters[key]) return false;
     }
-    if(activeHashtags.length && !e.hashtags.some(h=>hashtagIsActive(h))) return false;
+    if(activeHashtags.length && !activeHashtags.some(t=>termMatchesEntry(t,e))) return false;
     if(searchTerm){
-      const hay = (e.title+" "+e.source+" "+e.desc+" "+e.hashtags.join(" ")).toLowerCase();
-      if(!hay.includes(searchTerm.toLowerCase())) return false;
+      if(!entryHaystack(e).includes(searchTerm.toLowerCase())) return false;
     }
     return true;
   }
@@ -838,6 +851,12 @@
 
   function normTag(s){
     return (s||"").replace(/^#/,"").toLowerCase();
+  }
+  function entryHaystack(e){
+    return (e.title+" "+e.source+" "+e.desc+" "+e.hashtags.join(" ")).toLowerCase();
+  }
+  function termMatchesEntry(term, e){
+    return entryHaystack(e).includes(normTag(term));
   }
   function hashtagIsActive(h){
     return activeHashtags.some(t => normTag(h).includes(normTag(t)));
@@ -918,8 +937,7 @@
     e.preventDefault();
     const raw = searchInputEl.value.trim();
     if(!raw) return;
-    const h = raw.startsWith("#") ? raw : "#"+raw;
-    addActiveHashtag(h);
+    addActiveHashtag(raw);
     searchInputEl.value = "";
     searchTerm = "";
     render();
